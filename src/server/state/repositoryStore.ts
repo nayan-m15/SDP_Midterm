@@ -1,15 +1,17 @@
 import { rm } from 'node:fs/promises';
-import type { RepositoryAnalysis } from '../../shared/metrics';
+import type { AuthorMap, HistoryCommit, RepositoryAnalysis, RepositoryListItem } from '../../shared/metrics';
 import { AppError } from '../errors';
 
 export interface ActiveRepository {
   containerPath: string;
   repositoryPath: string;
   analysis: RepositoryAnalysis;
+  commits: HistoryCommit[];
+  authorMap: AuthorMap;
 }
 
 export class RepositoryStore {
-  private active?: ActiveRepository;
+  private repos = new Map<string, ActiveRepository>();
   private importing = false;
 
   beginImport(): void {
@@ -23,27 +25,62 @@ export class RepositoryStore {
     this.importing = false;
   }
 
-  async replace(next: ActiveRepository): Promise<void> {
-    const previous = this.active;
-    this.active = next;
-    if (previous?.containerPath && previous.containerPath !== next.containerPath) {
-      await rm(previous.containerPath, { recursive: true, force: true }).catch((error) => {
-        console.error('Could not remove the previous repository workspace.', error);
+  add(repo: ActiveRepository): void {
+    this.repos.set(repo.analysis.repository.id, repo);
+  }
+
+  getById(id: string): ActiveRepository {
+    const repo = this.repos.get(id);
+    if (!repo) {
+      throw new AppError(404, 'REPOSITORY_NOT_FOUND', 'The requested repository does not exist.');
+    }
+    return repo;
+  }
+
+  list(): RepositoryListItem[] {
+    return [...this.repos.values()].map((repo) => ({
+      id: repo.analysis.repository.id,
+      name: repo.analysis.repository.name,
+      source: repo.analysis.repository.source,
+      ref: repo.analysis.repository.ref,
+      resolvedCommit: repo.analysis.repository.resolvedCommit,
+      commitCount: repo.analysis.commitCount,
+    }));
+  }
+
+  async remove(id: string): Promise<void> {
+    const repo = this.repos.get(id);
+    if (!repo) {
+      throw new AppError(404, 'REPOSITORY_NOT_FOUND', 'The requested repository does not exist.');
+    }
+    this.repos.delete(id);
+    if (repo.containerPath) {
+      await rm(repo.containerPath, { recursive: true, force: true }).catch((error) => {
+        console.error('Could not remove repository workspace.', error);
       });
     }
   }
 
-  get(): ActiveRepository {
-    if (!this.active) {
-      throw new AppError(404, 'NO_ACTIVE_REPOSITORY', 'Import a repository before requesting metrics.');
-    }
-    return this.active;
+  setAuthorMap(id: string, map: AuthorMap): void {
+    const repo = this.repos.get(id);
+    if (!repo) throw new AppError(404, 'REPOSITORY_NOT_FOUND', 'The requested repository does not exist.');
+    this.repos.set(id, { ...repo, authorMap: map });
+  }
+
+  setAnalysis(id: string, analysis: RepositoryAnalysis): void {
+    const repo = this.repos.get(id);
+    if (!repo) throw new AppError(404, 'REPOSITORY_NOT_FOUND', 'The requested repository does not exist.');
+    this.repos.set(id, { ...repo, analysis });
   }
 
   async clear(): Promise<void> {
-    const previous = this.active;
-    this.active = undefined;
+    const repos = [...this.repos.values()];
+    this.repos.clear();
     this.importing = false;
-    if (previous) await rm(previous.containerPath, { recursive: true, force: true });
+    await Promise.all(
+      repos
+        .filter((repo) => repo.containerPath)
+        .map((repo) => rm(repo.containerPath, { recursive: true, force: true }).catch(() => {})),
+    );
   }
 }

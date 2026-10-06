@@ -5,6 +5,7 @@ import { calculateMetrics } from '../../src/server/services/metricsService';
 const alice = { id: 'Alice <alice@example.com>', name: 'Alice', email: 'alice@example.com' };
 const bob = { id: 'Bob <bob@example.com>', name: 'Bob', email: 'bob@example.com' };
 const metadata: RepositoryMetadata = {
+  id: 'test-repo-id',
   name: 'fixture', source: 'upload', ref: 'HEAD', resolvedCommit: 'f'.repeat(40),
 };
 
@@ -63,5 +64,26 @@ describe('calculateMetrics', () => {
     expect(result.repositoryMetrics.churn).toBe(0);
     expect(result.repositoryMetrics.modifications).toBe(0);
     expect(result.authors).toEqual([]);
+  });
+
+  it('returns zero metrics and zero denominators for an empty commit set', () => {
+    const result = calculateMetrics([], metadata);
+    expect(result.commitCount).toBe(0);
+    expect(result.repositoryMetrics).toEqual({
+      added: 0, removed: 0, growth: 0, churn: 0,
+      modifications: 0, modificationFrequency: 0, churnRate: 0,
+    });
+    expect(result.files).toEqual([]);
+    expect(result.authors).toEqual([]);
+  });
+
+  it('root directory metrics equal repositoryMetrics', () => {
+    const commits = [commit('a'), commit('b', bob)];
+    commits[0].deltas = [{ path: 'src/a.txt', added: 3, removed: 0, binary: false }];
+    commits[1].deltas = [{ path: 'src/b.txt', added: 2, removed: 1, binary: false }];
+    const result = calculateMetrics(commits, metadata);
+    const root = result.directories.find((d) => d.path === '.');
+    expect(root).toBeDefined();
+    expect(root!.metrics).toEqual(result.repositoryMetrics);
   });
 });

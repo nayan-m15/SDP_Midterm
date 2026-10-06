@@ -6,7 +6,7 @@ type ImportMode = 'clone' | 'upload';
 interface IngestionPanelProps {
   busy: boolean;
   onBusyChange(value: boolean): void;
-  onImported(): Promise<void>;
+  onImported(repoId: string): Promise<void>;
   onError(message: string): void;
 }
 
@@ -25,13 +25,13 @@ export function IngestionPanel({
     event.preventDefault();
     onBusyChange(true);
     try {
-      if (mode === 'clone') {
-        await cloneRepository(url, ref.trim());
-      } else {
-        if (!file) throw new Error('Choose a repository ZIP to upload.');
-        await uploadRepository(file, ref.trim());
-      }
-      await onImported();
+      const result = mode === 'clone'
+        ? await cloneRepository(url, ref.trim())
+        : await uploadRepository(
+            file ?? (() => { throw new Error('Choose a repository ZIP to upload.'); })(),
+            ref.trim(),
+          );
+      await onImported(result.id);
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Repository import failed.');
     } finally {

@@ -107,6 +107,93 @@ export async function createGitFixture(): Promise<GitFixture> {
   };
 }
 
+// Fixture with a changed rename: alpha.txt renamed to beta.txt with an additional line.
+export async function createChangedRenameFixture(): Promise<GitFixture> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rat-rename-'));
+  const repositoryPath = path.join(root, 'rename-repo');
+  await mkdir(repositoryPath, { recursive: true });
+  git(repositoryPath, ['init', '-b', 'main']);
+
+  await writeFile(path.join(repositoryPath, 'alpha.txt'), 'line1\nline2\nline3\nline4\n');
+  const first = await commit(
+    repositoryPath,
+    'initial',
+    { name: 'Alice', email: 'alice@example.com' },
+    '2024-01-01T00:00:00Z',
+  );
+
+  // Delete alpha.txt and create beta.txt with the same 4 lines + 1 new line.
+  // With -M50%, git detects this as a rename (80% similarity) with added=1.
+  await rm(path.join(repositoryPath, 'alpha.txt'));
+  await writeFile(path.join(repositoryPath, 'beta.txt'), 'line1\nline2\nline3\nline4\nextra-line\n');
+  const second = await commit(
+    repositoryPath,
+    'changed rename',
+    { name: 'Alice', email: 'alice@example.com' },
+    '2024-01-02T00:00:00Z',
+  );
+
+  return {
+    root,
+    repositoryPath,
+    hashes: [first, second],
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  };
+}
+
+// Fixture with a file whose name contains non-ASCII characters.
+export async function createUnicodePathFixture(): Promise<GitFixture> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'rat-unicode-'));
+  const repositoryPath = path.join(root, 'unicode-repo');
+  await mkdir(repositoryPath, { recursive: true });
+  git(repositoryPath, ['init', '-b', 'main']);
+
+  await writeFile(path.join(repositoryPath, 'README.md'), 'hello\n');
+  await writeFile(path.join(repositoryPath, 'données.txt'), 'contenu\n');
+  const first = await commit(
+    repositoryPath,
+    'initial',
+    { name: 'Alice', email: 'alice@example.com' },
+    '2024-01-01T00:00:00Z',
+  );
+
+  return {
+    root,
+    repositoryPath,
+    hashes: [first],
+    cleanup: () => rm(root, { recursive: true, force: true }),
+  };
+}
+
+// Create a ZIP containing a path traversal entry (../evil.txt).
+export async function createTraversalZip(): Promise<Buffer> {
+  const outputPath = path.join(os.tmpdir(), `rat-traversal-${Date.now()}.zip`);
+  await new Promise<void>((resolve, reject) => {
+    const output = createWriteStream(outputPath);
+    const archive = archiver('zip');
+    output.on('close', resolve);
+    archive.on('error', reject);
+    archive.pipe(output);
+    archive.append(Buffer.from('evil content'), { name: '../evil.txt' });
+    void archive.finalize();
+  });
+  const { readFile } = await import('node:fs/promises');
+  const buffer = await readFile(outputPath);
+  await rm(outputPath, { force: true });
+  return buffer;
+}
+
+// Create a ZIP of a plain directory with no .git.
+export async function createNoGitZip(): Promise<Buffer> {
+  const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'rat-nogit-'));
+  const dirPath = path.join(tmpRoot, 'plain-dir');
+  await mkdir(dirPath, { recursive: true });
+  await writeFile(path.join(dirPath, 'file.txt'), 'hello\n');
+  const buffer = await zipDirectory(dirPath);
+  await rm(tmpRoot, { recursive: true, force: true });
+  return buffer;
+}
+
 export async function zipDirectory(directoryPath: string): Promise<Buffer> {
   const outputPath = path.join(path.dirname(directoryPath), `fixture-${Date.now()}.zip`);
   await new Promise<void>((resolve, reject) => {

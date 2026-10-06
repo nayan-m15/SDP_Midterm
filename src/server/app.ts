@@ -16,7 +16,7 @@ export function createApp(store = new RepositoryStore()) {
     response.json({ status: 'ok' });
   });
   app.use('/api/repositories', createRepositoryRouter(store));
-  app.use('/api', createMetricsRouter(store));
+  app.use('/api/repositories', createMetricsRouter(store));
 
   app.use('/api', (_request, _response, next) => {
     next(new AppError(404, 'NOT_FOUND', 'The requested API endpoint does not exist.'));

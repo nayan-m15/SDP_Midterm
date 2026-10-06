@@ -5,6 +5,7 @@ import type {
   BaseMetric,
   CommitObjectMetric,
   CommitSummary,
+  FilterParams,
   HistoryCommit,
   ObjectAggregate,
   ObjectKind,
@@ -194,4 +195,27 @@ export function calculateMetrics(
     authors: root.authors,
     commits: summaries.reverse(),
   };
+}
+
+export function filterCommits(commits: HistoryCommit[], filter: FilterParams): HistoryCommit[] {
+  return commits.filter((commit) => {
+    if (filter.startTs !== undefined && commit.committerTimestamp < filter.startTs) return false;
+    if (filter.endTs !== undefined && commit.committerTimestamp >= filter.endTs) return false;
+    if (filter.authorIds && filter.authorIds.length > 0 && !filter.authorIds.includes(commit.author.id)) return false;
+    if (filter.hashes && filter.hashes.length > 0 && !filter.hashes.includes(commit.hash)) return false;
+    if (filter.paths && filter.paths.length > 0) {
+      const hasMatchingDelta = commit.deltas.some((delta) =>
+        filter.paths!.some(
+          (fp) =>
+            fp === '.' ||
+            delta.path === fp ||
+            delta.path.startsWith(`${fp}/`) ||
+            (delta.previousPath !== undefined &&
+              (delta.previousPath === fp || delta.previousPath.startsWith(`${fp}/`))),
+        ),
+      );
+      if (!hasMatchingDelta) return false;
+    }
+    return true;
+  });
 }

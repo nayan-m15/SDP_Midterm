@@ -1,10 +1,15 @@
 export type RepositorySource = 'clone' | 'upload';
 export type ObjectKind = 'file' | 'directory';
+export type AuthorMap = Record<string, AuthorIdentity>;
 
 export interface AuthorIdentity {
   id: string;
   name: string;
   email: string;
+}
+
+export interface RawAuthor extends AuthorIdentity {
+  commitCount: number;
 }
 
 export interface CommitMetadata {
@@ -65,10 +70,28 @@ export interface CommitSummary extends CommitMetadata {
 }
 
 export interface RepositoryMetadata {
+  id: string;
   name: string;
   source: RepositorySource;
   ref: string;
   resolvedCommit: string;
+}
+
+export interface RepositoryListItem {
+  id: string;
+  name: string;
+  source: RepositorySource;
+  ref: string;
+  resolvedCommit: string;
+  commitCount: number;
+}
+
+export interface FilterParams {
+  startTs?: number;
+  endTs?: number;
+  authorIds?: string[];
+  paths?: string[];
+  hashes?: string[];
 }
 
 export interface RepositoryAnalysis {

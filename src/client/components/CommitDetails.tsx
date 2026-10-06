@@ -2,14 +2,14 @@ import { useState } from 'react';
 import type { CommitSummary } from '../../shared/metrics';
 import { getCommitMetrics } from '../api';
 
-export function CommitDetails({ commits, onError }: { commits: CommitSummary[]; onError(message: string): void }) {
+export function CommitDetails({ repoId, commits, onError }: { repoId: string; commits: CommitSummary[]; onError(message: string): void }) {
   const [selected, setSelected] = useState<CommitSummary | null>(null);
   const [loadingHash, setLoadingHash] = useState<string | null>(null);
 
   async function selectCommit(hash: string) {
     setLoadingHash(hash);
     try {
-      setSelected(await getCommitMetrics(hash));
+      setSelected(await getCommitMetrics(repoId, hash));
     } catch (error) {
       onError(error instanceof Error ? error.message : 'Could not load commit metrics.');
     } finally {

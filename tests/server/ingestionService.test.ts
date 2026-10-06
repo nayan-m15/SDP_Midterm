@@ -1,12 +1,17 @@
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { GitFixture } from '../helpers/createGitFixture';
-import { createGitFixture, zipDirectory } from '../helpers/createGitFixture';
+import {
+  createGitFixture,
+  createNoGitZip,
+  zipDirectory,
+} from '../helpers/createGitFixture';
 import { prepareClone, prepareUpload } from '../../src/server/services/ingestionService';
+import { config } from '../../src/server/config';
 
 const fixtures: GitFixture[] = [];
 const staged: string[] = [];
@@ -85,5 +90,61 @@ describe('repository ingestion', () => {
       code: 'INVALID_FILE_TYPE',
     });
     await expect(prepareClone('file:///tmp/repository')).rejects.toMatchObject({ code: 'INVALID_URL' });
+  });
+
+  it('rejects a ZIP with no .git working tree', async () => {
+    const archive = await createNoGitZip();
+    await expect(prepareUpload(archive, 'sample.zip')).rejects.toMatchObject({ code: 'AMBIGUOUS_REPOSITORY' });
+  });
+
+  it('rejects a ZIP with two Git working trees', async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'rat-multi-'));
+    staged.push(tmpRoot);
+    const repo1 = path.join(tmpRoot, 'repo1');
+    const repo2 = path.join(tmpRoot, 'repo2');
+    await mkdir(repo1, { recursive: true });
+    await mkdir(repo2, { recursive: true });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo1 });
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repo2 });
+    const archive = await zipDirectory(tmpRoot);
+    staged.push = staged.push.bind(staged); // keep staged reference clean
+    await rm(tmpRoot, { recursive: true, force: true });
+    staged.splice(staged.indexOf(tmpRoot), 1);
+    await expect(prepareUpload(archive, 'multi.zip')).rejects.toMatchObject({ code: 'AMBIGUOUS_REPOSITORY' });
+  });
+
+  it('rejects unsafe paths through the path validator (zip-slip protection)', async () => {
+    // validateArchivePath is the guard that prevents traversal entries from being extracted.
+    // Archiver normalizes paths when creating ZIPs, so we test the validator directly.
+    const { validateArchivePath } = await import('../../src/server/utils/paths');
+    expect(() => validateArchivePath('../evil.txt')).toThrow();
+    expect(() => validateArchivePath('../../etc/passwd')).toThrow();
+    expect(() => validateArchivePath('/absolute/path')).toThrow();
+    // Safe paths should not throw
+    expect(() => validateArchivePath('safe/path/file.txt')).not.toThrow();
+    expect(() => validateArchivePath('dir/subdir/file.txt')).not.toThrow();
+  });
+
+  it('rejects an upload exceeding the size limit', async () => {
+    const oversized = Buffer.alloc(config.uploadLimitBytes + 1);
+    await expect(prepareUpload(oversized, 'large.zip')).rejects.toMatchObject({ code: 'UPLOAD_TOO_LARGE' });
+  });
+
+  it('rejects an empty repository with no commits', async () => {
+    const tmpRoot = await mkdtemp(path.join(os.tmpdir(), 'rat-empty-'));
+    const repoPath = path.join(tmpRoot, 'empty-repo');
+    await mkdir(repoPath);
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoPath });
+    const archive = await zipDirectory(repoPath);
+    await rm(tmpRoot, { recursive: true, force: true });
+    await expect(prepareUpload(archive, 'empty.zip')).rejects.toMatchObject({ code: 'GIT_COMMAND_FAILED' });
+  });
+
+  it('removes the staging directory after a failed extraction', async () => {
+    await mkdir(config.dataRoot, { recursive: true });
+    const before = await readdir(config.dataRoot);
+    await expect(prepareUpload(Buffer.from('corrupt-zip-data'), 'bad.zip')).rejects.toBeTruthy();
+    const after = await readdir(config.dataRoot);
+    expect(after.length).toBe(before.length);
   });
 });
