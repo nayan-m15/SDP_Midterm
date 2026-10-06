@@ -15,8 +15,6 @@ export function AuthorMergePanel({ repoId, onMerged, onError }: AuthorMergePanel
   const [pending, setPending] = useState<AuthorMap>({});
   const [saving, setSaving] = useState(false);
 
-  // onError is a stable callback prop; intentionally omitted from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!open) return;
     getRawAuthors(repoId)
@@ -26,7 +24,7 @@ export function AuthorMergePanel({ repoId, onMerged, onError }: AuthorMergePanel
         setPending({ ...am });
       })
       .catch((err: unknown) => onError(err instanceof Error ? err.message : 'Could not load authors.'));
-  }, [open, repoId]);
+  }, [open, repoId, onError]);
 
   async function save() {
     setSaving(true);

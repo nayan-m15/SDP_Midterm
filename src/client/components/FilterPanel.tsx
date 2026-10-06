@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { AuthorMetric, CommitSummary, FilterParams } from '../../shared/metrics';
 
 interface FilterPanelProps {
@@ -31,6 +31,14 @@ export function FilterPanel({ authors, commits, filter, onFilterChange }: Filter
     filter.paths?.length ||
     filter.hashes?.length
   );
+
+  useEffect(() => {
+    setFromDate(filter.startTs ? tsToDateString(filter.startTs) : '');
+    setToDate(filter.endTs ? tsToDateString(filter.endTs) : '');
+    setSelectedAuthors(filter.authorIds ?? []);
+    setPathInput(filter.paths?.join(', ') ?? '');
+    setSelectedHashes(filter.hashes ?? []);
+  }, [filter]);
 
   function apply() {
     const newFilter: FilterParams = {};

@@ -94,7 +94,19 @@ export function App() {
     }, 400);
   }
 
+  function resetFilters() {
+    handleFilterChange({});
+  }
+
   const repoCount = repositories.length;
+  const activeFilterCount = [
+    filter.startTs,
+    filter.endTs,
+    filter.authorIds?.length,
+    filter.paths?.length,
+    filter.hashes?.length,
+  ].filter(Boolean).length;
+  const hasActiveFilter = activeFilterCount > 0;
 
   return (
     <div className="app-shell">
@@ -125,77 +137,114 @@ export function App() {
 
         {error && <ErrorBanner message={error} onDismiss={() => setError('')} />}
 
-        <IngestionPanel busy={busy} onBusyChange={setBusy} onImported={handleImported} onError={setError} />
-
-        {repositories.length > 0 && (
-          <RepositoryList
-            repositories={repositories}
-            activeId={activeRepoId}
-            onSelect={handleSelectRepo}
-            onDeleted={(id) => void handleDeleteRepo(id)}
-            onError={setError}
-          />
-        )}
-
-        {analysis && activeRepoId ? (
-          <>
-            <FilterPanel
-              authors={analysis.authors}
-              commits={analysis.commits}
-              filter={filter}
-              onFilterChange={handleFilterChange}
-            />
-            <AuthorMergePanel
-              repoId={activeRepoId}
-              onMerged={async () => { await loadAnalysis(activeRepoId, filter); }}
-              onError={setError}
-            />
-            <div className="dashboard">
-              <RepositorySummary analysis={analysis} />
-              <AuthorMetrics authors={analysis.authors} />
-              <div className="table-tabs" role="tablist" aria-label="Metric object type">
-                <button
-                  className={tableView === 'files' ? 'active' : ''}
-                  onClick={() => setTableView('files')}
-                  role="tab"
-                >
-                  Files
-                </button>
-                <button
-                  className={tableView === 'directories' ? 'active' : ''}
-                  onClick={() => setTableView('directories')}
-                  role="tab"
-                >
-                  Directories
-                </button>
-              </div>
-              <MetricsTable
-                title={tableView === 'files' ? 'File metrics' : 'Directory metrics'}
-                items={tableView === 'files' ? analysis.files : analysis.directories}
+        <div className="workspace-layout">
+          <aside className="analysis-sidebar" aria-label="Analysis controls">
+            {repositories.length > 0 ? (
+              <RepositoryList
+                repositories={repositories}
+                activeId={activeRepoId}
+                onSelect={handleSelectRepo}
+                onDeleted={(id) => void handleDeleteRepo(id)}
+                onError={setError}
               />
-              <CommitDetails repoId={activeRepoId} commits={analysis.commits} onError={setError} />
-            </div>
-          </>
-        ) : activeRepoId ? (
-          <section className="empty-state">
-            <div className="empty-graphic">
-              <span />
-              <span />
-              <span />
-            </div>
-            <h2>Loading analysis…</h2>
-          </section>
-        ) : (
-          <section className="empty-state">
-            <div className="empty-graphic">
-              <span />
-              <span />
-              <span />
-            </div>
-            <h2>Your repository story starts here</h2>
-            <p>Import a Git repository to calculate metrics across files, directories, authors, and commits.</p>
-          </section>
-        )}
+            ) : (
+              <section className="panel repo-list-panel" aria-label="Imported repositories">
+                <div className="section-heading">
+                  <div>
+                    <span className="eyebrow">Repositories</span>
+                    <h2>Imported repositories</h2>
+                  </div>
+                  <span className="count-badge">0</span>
+                </div>
+                <p className="empty-copy sidebar-empty-copy">Import a repository to pin it here.</p>
+              </section>
+            )}
+
+            <section className={`panel reset-filter-bar${hasActiveFilter ? ' active' : ''}`} aria-label="Reset filters">
+              <div>
+                <span className="eyebrow">Reset filters</span>
+                <strong>{hasActiveFilter ? `${activeFilterCount} scope filter${activeFilterCount === 1 ? '' : 's'} active` : 'Full history selected'}</strong>
+                <small>{hasActiveFilter ? 'Clear the active analysis scope.' : 'Metrics include every analyzed commit.'}</small>
+              </div>
+              <button type="button" className="secondary-button" onClick={resetFilters} disabled={!hasActiveFilter || !activeRepoId}>
+                Reset
+              </button>
+            </section>
+
+            {analysis && activeRepoId ? (
+              <>
+                <FilterPanel
+                  authors={analysis.authors}
+                  commits={analysis.commits}
+                  filter={filter}
+                  onFilterChange={handleFilterChange}
+                />
+                <AuthorMergePanel
+                  repoId={activeRepoId}
+                  onMerged={async () => { await loadAnalysis(activeRepoId, filter); }}
+                  onError={setError}
+                />
+              </>
+            ) : (
+              <section className="panel sidebar-placeholder">
+                <span className="eyebrow">Analysis scope</span>
+                <h2>Waiting for analysis</h2>
+                <p>Select or import a repository to filter commits and manage author identities.</p>
+              </section>
+            )}
+          </aside>
+
+          <div className="workspace-main">
+            <IngestionPanel busy={busy} onBusyChange={setBusy} onImported={handleImported} onError={setError} />
+
+            {analysis && activeRepoId ? (
+              <div className="dashboard">
+                <RepositorySummary analysis={analysis} />
+                <AuthorMetrics authors={analysis.authors} />
+                <div className="table-tabs" role="tablist" aria-label="Metric object type">
+                  <button
+                    className={tableView === 'files' ? 'active' : ''}
+                    onClick={() => setTableView('files')}
+                    role="tab"
+                  >
+                    Files
+                  </button>
+                  <button
+                    className={tableView === 'directories' ? 'active' : ''}
+                    onClick={() => setTableView('directories')}
+                    role="tab"
+                  >
+                    Directories
+                  </button>
+                </div>
+                <MetricsTable
+                  title={tableView === 'files' ? 'File metrics' : 'Directory metrics'}
+                  items={tableView === 'files' ? analysis.files : analysis.directories}
+                />
+                <CommitDetails repoId={activeRepoId} commits={analysis.commits} onError={setError} />
+              </div>
+            ) : activeRepoId ? (
+              <section className="empty-state">
+                <div className="empty-graphic">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <h2>Loading analysis…</h2>
+              </section>
+            ) : (
+              <section className="empty-state">
+                <div className="empty-graphic">
+                  <span />
+                  <span />
+                  <span />
+                </div>
+                <h2>Your repository story starts here</h2>
+                <p>Import a Git repository to calculate metrics across files, directories, authors, and commits.</p>
+              </section>
+            )}
+          </div>
+        </div>
       </main>
 
       <footer>
