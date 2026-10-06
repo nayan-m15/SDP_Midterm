@@ -2,6 +2,7 @@ import type {
   ApiErrorResponse,
   AuthorIdentity,
   AuthorMap,
+  CommitListResponse,
   CommitSummary,
   FilterParams,
   RawAuthor,
@@ -53,15 +54,38 @@ export async function deleteRepository(repoId: string): Promise<void> {
   await request(`/api/repositories/${encodeURIComponent(repoId)}`, { method: 'DELETE' });
 }
 
-export function getAnalysis(repoId: string, filter?: FilterParams): Promise<RepositoryAnalysis> {
+export function getAnalysis(
+  repoId: string,
+  filter?: FilterParams,
+  page = 0,
+  pageSize = 200,
+): Promise<RepositoryAnalysis> {
   const params = new URLSearchParams();
   if (filter?.startTs !== undefined) params.set('startTs', String(filter.startTs));
   if (filter?.endTs !== undefined) params.set('endTs', String(filter.endTs));
   if (filter?.authorIds?.length) params.set('authorIds', filter.authorIds.join(','));
   if (filter?.paths?.length) params.set('paths', filter.paths.join(','));
   if (filter?.hashes?.length) params.set('hashes', filter.hashes.join(','));
-  const qs = params.toString();
-  return request(`/api/repositories/${encodeURIComponent(repoId)}/analysis${qs ? `?${qs}` : ''}`);
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  return request(`/api/repositories/${encodeURIComponent(repoId)}/analysis?${params.toString()}`);
+}
+
+export function getCommitPage(
+  repoId: string,
+  filter: FilterParams | undefined,
+  page: number,
+  pageSize = 200,
+): Promise<CommitListResponse> {
+  const params = new URLSearchParams();
+  if (filter?.startTs !== undefined) params.set('startTs', String(filter.startTs));
+  if (filter?.endTs !== undefined) params.set('endTs', String(filter.endTs));
+  if (filter?.authorIds?.length) params.set('authorIds', filter.authorIds.join(','));
+  if (filter?.paths?.length) params.set('paths', filter.paths.join(','));
+  if (filter?.hashes?.length) params.set('hashes', filter.hashes.join(','));
+  params.set('page', String(page));
+  params.set('pageSize', String(pageSize));
+  return request(`/api/repositories/${encodeURIComponent(repoId)}/commits?${params.toString()}`);
 }
 
 export function getCommitMetrics(repoId: string, hash: string): Promise<CommitSummary> {

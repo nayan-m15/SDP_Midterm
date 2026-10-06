@@ -8,7 +8,7 @@ import { config } from '../config';
 import { AppError } from '../errors';
 import { extractHistory } from '../services/historyService';
 import { prepareClone, prepareUpload, type PreparedRepository } from '../services/ingestionService';
-import { calculateMetrics } from '../services/metricsService';
+import { calculateMetricsAsync } from '../services/metricsService';
 import { applyAuthorMap, parseMailmap } from '../services/authorMerge';
 import type { RepositoryStore } from '../state/repositoryStore';
 
@@ -38,7 +38,7 @@ async function importRepository(
   };
   const authorMap = await parseMailmap(prepared.repositoryPath);
   const mergedCommits = applyAuthorMap(rawCommits, authorMap);
-  const analysis = calculateMetrics(mergedCommits, metadata);
+  const analysis = await calculateMetricsAsync(mergedCommits, metadata);
   store.add({
     containerPath: prepared.containerPath,
     repositoryPath: prepared.repositoryPath,

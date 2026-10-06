@@ -188,6 +188,26 @@ td { border-bottom: 1px solid #e8ebe8; padding: 11px 13px; }
 
 footer { border-top: 1px solid var(--line); padding: 25px max(24px, calc((100vw - 1440px) / 2)); display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; }
 
+/* Dashboard loading pulse */
+@keyframes data-pulse { 0%,100% { opacity: 1; } 50% { opacity: .42; } }
+.dashboard.loading .metric-card strong,
+.dashboard.loading .chart-container,
+.dashboard.loading .ownership-chart { animation: data-pulse 1.1s ease-in-out infinite; }
+
+/* Commit load-more button */
+.load-more-btn { width: 100%; border: 0; border-top: 1px solid var(--line); background: white; padding: 11px; font-size: 11px; color: var(--green); font-weight: 700; border-radius: 0 0 10px 10px; }
+.load-more-btn:hover:not(:disabled) { background: #f4faf8; }
+
+/* Copy hash interactive span */
+.hash-copy-btn { display: inline-flex; align-items: center; cursor: pointer; border-radius: 4px; padding: 1px 3px; }
+.hash-copy-btn:hover { background: #e7f0ee; }
+.hash-copy-btn code { color: var(--green); font-size: 10px; }
+.copied-badge { color: #0a7462; font-size: 10px; font-weight: 700; font-family: 'DM Mono', monospace; }
+
+/* Commit search input */
+.commit-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; font-size: 11px; margin-bottom: 6px; outline: none; background: white; }
+.commit-search:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(13,118,110,.11); }
+
 /* Repository list */
 .repo-list-panel { padding: 23px; margin: 0; }
 .repo-items { list-style: none; margin: 15px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

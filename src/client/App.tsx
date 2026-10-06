@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { FilterParams, RepositoryAnalysis, RepositoryListItem } from '../shared/metrics';
-import { getAnalysis, listRepositories } from './api';
+import type { CommitSummary, FilterParams, RepositoryAnalysis, RepositoryListItem } from '../shared/metrics';
+import { getAnalysis, getCommitPage, listRepositories } from './api';
 import { AuthorMergePanel } from './components/AuthorMergePanel';
 import { AuthorMetrics } from './components/AuthorMetrics';
 import { CommitDetails } from './components/CommitDetails';
@@ -19,6 +19,8 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [tableView, setTableView] = useState<'files' | 'directories'>('files');
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [commitPage, setCommitPage] = useState(0);
   const filterDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   async function refreshRepos(): Promise<RepositoryListItem[]> {
@@ -32,12 +34,15 @@ export function App() {
   }
 
   async function loadAnalysis(repoId: string, currentFilter: FilterParams = {}) {
+    setAnalysisLoading(true);
     try {
       const result = await getAnalysis(repoId, currentFilter);
       setAnalysis(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analysis.');
       setAnalysis(null);
+    } finally {
+      setAnalysisLoading(false);
     }
   }
 
@@ -56,6 +61,7 @@ export function App() {
     setRepositories(repos);
     setActiveRepoId(repoId);
     setFilter({});
+    setCommitPage(0);
     setAnalysis(null);
     await loadAnalysis(repoId, {});
   }
@@ -65,6 +71,7 @@ export function App() {
     if (filterDebounce.current) clearTimeout(filterDebounce.current);
     setActiveRepoId(id);
     setFilter({});
+    setCommitPage(0);
     setAnalysis(null);
     void loadAnalysis(id, {});
   }
@@ -77,6 +84,7 @@ export function App() {
       if (first) {
         setActiveRepoId(first.id);
         setFilter({});
+        setCommitPage(0);
         await loadAnalysis(first.id, {});
       } else {
         setActiveRepoId(null);
@@ -87,12 +95,29 @@ export function App() {
 
   function handleFilterChange(newFilter: FilterParams) {
     setFilter(newFilter);
+    setCommitPage(0);
     if (!activeRepoId) return;
     if (filterDebounce.current) clearTimeout(filterDebounce.current);
     filterDebounce.current = setTimeout(() => {
       void loadAnalysis(activeRepoId, newFilter);
     }, 400);
   }
+
+  async function handleLoadMoreCommits(): Promise<CommitSummary[]> {
+    if (!activeRepoId) return [];
+    const nextPage = commitPage + 1;
+    setCommitPage(nextPage);
+    try {
+      const result = await getCommitPage(activeRepoId, filter, nextPage);
+      return result.items;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load commits.');
+      return [];
+    }
+  }
+
+  const activeRepo = repositories.find((r) => r.id === activeRepoId);
+  const totalCommits = activeRepo?.commitCount ?? analysis?.commitCount ?? 0;
 
   const repoCount = repositories.length;
 
@@ -155,6 +180,8 @@ export function App() {
                   authors={analysis.authors}
                   commits={analysis.commits}
                   filter={filter}
+                  commitCount={analysis.commitCount}
+                  totalCommits={totalCommits}
                   onFilterChange={handleFilterChange}
                 />
                 <AuthorMergePanel
@@ -176,7 +203,7 @@ export function App() {
             <IngestionPanel busy={busy} onBusyChange={setBusy} onImported={handleImported} onError={setError} />
 
             {analysis && activeRepoId ? (
-              <div className="dashboard">
+              <div className={`dashboard${analysisLoading ? ' loading' : ''}`}>
                 <RepositorySummary analysis={analysis} />
                 <AuthorMetrics authors={analysis.authors} />
                 <div className="table-tabs" role="tablist" aria-label="Metric object type">
@@ -199,7 +226,13 @@ export function App() {
                   title={tableView === 'files' ? 'File metrics' : 'Directory metrics'}
                   items={tableView === 'files' ? analysis.files : analysis.directories}
                 />
-                <CommitDetails repoId={activeRepoId} commits={analysis.commits} onError={setError} />
+                <CommitDetails
+                  repoId={activeRepoId}
+                  commits={analysis.commits}
+                  totalCommits={analysis.commitCount}
+                  onLoadMore={handleLoadMoreCommits}
+                  onError={setError}
+                />
               </div>
             ) : activeRepoId ? (
               <section className="empty-state">

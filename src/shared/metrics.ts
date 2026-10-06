@@ -104,6 +104,13 @@ export interface RepositoryAnalysis {
   commits: CommitSummary[];
 }
 
+export interface CommitListResponse {
+  items: CommitSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface ApiErrorResponse {
   error: {
     code: string;

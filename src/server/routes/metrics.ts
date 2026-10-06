@@ -3,8 +3,13 @@ import { z } from 'zod';
 import type { FilterParams } from '../../shared/metrics';
 import { AppError } from '../errors';
 import { applyAuthorMap, extractRawAuthors, mergeAuthorMaps, parseMailmap } from '../services/authorMerge';
-import { calculateMetrics, filterCommits } from '../services/metricsService';
+import { calculateMetricsAsync, commitToSummary, filterCommits } from '../services/metricsService';
 import type { RepositoryStore } from '../state/repositoryStore';
+
+const paginationFields = {
+  page: z.string().regex(/^\d+$/).transform(Number).optional(),
+  pageSize: z.string().regex(/^\d+$/).transform(Number).optional(),
+};
 
 const filterSchema = z
   .object({
@@ -21,6 +26,7 @@ const filterSchema = z
     authorIds: z.string().optional(),
     paths: z.string().optional(),
     hashes: z.string().optional(),
+    ...paginationFields,
   })
   .strict();
 
@@ -28,33 +34,72 @@ const authorMapSchema = z.object({
   map: z.record(z.object({ id: z.string(), name: z.string(), email: z.string() })),
 });
 
+function parseFilter(data: z.infer<typeof filterSchema>): FilterParams {
+  return {
+    startTs: data.startTs,
+    endTs: data.endTs,
+    authorIds: data.authorIds ? data.authorIds.split(',').filter(Boolean) : undefined,
+    paths: data.paths ? data.paths.split(',').filter(Boolean) : undefined,
+    hashes: data.hashes ? data.hashes.split(',').filter(Boolean) : undefined,
+  };
+}
+
 export function createMetricsRouter(store: RepositoryStore): Router {
   const router = Router();
 
-  router.get('/:repoId/analysis', (request, response, next) => {
+  router.get('/:repoId/analysis', async (request, response, next) => {
     try {
       const repo = store.getById(request.params.repoId);
       const parsed = filterSchema.safeParse(request.query);
       if (!parsed.success) {
         throw new AppError(400, 'INVALID_FILTER', 'Invalid filter parameters.');
       }
+
+      const pg = parsed.data.page ?? 0;
+      const ps = Math.min(parsed.data.pageSize ?? 200, 500);
+
       const { startTs, endTs, authorIds: authorIdsStr, paths: pathsStr, hashes: hashesStr } = parsed.data;
       const hasFilter = startTs !== undefined || endTs !== undefined || authorIdsStr || pathsStr || hashesStr;
-      if (!hasFilter) {
-        response.json(repo.analysis);
-        return;
+
+      let analysis = repo.analysis;
+      if (hasFilter) {
+        const filter = parseFilter(parsed.data);
+        const mergedCommits = applyAuthorMap(repo.commits, repo.authorMap);
+        const filtered = filterCommits(mergedCommits, filter);
+        analysis = await calculateMetricsAsync(filtered, repo.analysis.repository);
       }
-      const filter: FilterParams = {
-        startTs,
-        endTs,
-        authorIds: authorIdsStr ? authorIdsStr.split(',').filter(Boolean) : undefined,
-        paths: pathsStr ? pathsStr.split(',').filter(Boolean) : undefined,
-        hashes: hashesStr ? hashesStr.split(',').filter(Boolean) : undefined,
-      };
+
+      response.json({ ...analysis, commits: analysis.commits.slice(pg * ps, (pg + 1) * ps) });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Paginated commits endpoint — does NOT re-run full metric aggregation.
+  router.get('/:repoId/commits', (request, response, next) => {
+    try {
+      const repo = store.getById(request.params.repoId);
+      const parsed = filterSchema.safeParse(request.query);
+      if (!parsed.success) {
+        throw new AppError(400, 'INVALID_FILTER', 'Invalid filter parameters.');
+      }
+
+      const pg = parsed.data.page ?? 0;
+      const ps = Math.min(parsed.data.pageSize ?? 200, 500);
+
+      const { startTs, endTs, authorIds: authorIdsStr, paths: pathsStr, hashes: hashesStr } = parsed.data;
+      const hasFilter = startTs !== undefined || endTs !== undefined || authorIdsStr || pathsStr || hashesStr;
+
       const mergedCommits = applyAuthorMap(repo.commits, repo.authorMap);
-      const filtered = filterCommits(mergedCommits, filter);
-      const filteredAnalysis = calculateMetrics(filtered, repo.analysis.repository);
-      response.json(filteredAnalysis);
+      const allCommits = hasFilter ? filterCommits(mergedCommits, parseFilter(parsed.data)) : mergedCommits;
+      const summaries = allCommits.map(commitToSummary).reverse();
+
+      response.json({
+        items: summaries.slice(pg * ps, (pg + 1) * ps),
+        total: summaries.length,
+        page: pg,
+        pageSize: ps,
+      });
     } catch (error) {
       next(error);
     }
@@ -95,7 +140,7 @@ export function createMetricsRouter(store: RepositoryStore): Router {
       const newAuthorMap = mergeAuthorMaps(mailmap, parsed.data.map);
       store.setAuthorMap(repoId, newAuthorMap);
       const mergedCommits = applyAuthorMap(repo.commits, newAuthorMap);
-      const newAnalysis = calculateMetrics(mergedCommits, repo.analysis.repository);
+      const newAnalysis = await calculateMetricsAsync(mergedCommits, repo.analysis.repository);
       store.setAnalysis(repoId, newAnalysis);
       response.json(newAnalysis);
     } catch (error) {

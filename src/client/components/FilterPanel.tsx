@@ -5,6 +5,8 @@ interface FilterPanelProps {
   authors: AuthorMetric[];
   commits: CommitSummary[];
   filter: FilterParams;
+  commitCount?: number;    // filtered commit count (after applying current filter)
+  totalCommits?: number;  // unfiltered total
   onFilterChange(filter: FilterParams): void;
 }
 
@@ -16,12 +18,13 @@ function dateStringToTs(value: string): number {
   return Math.floor(new Date(value).getTime() / 1000);
 }
 
-export function FilterPanel({ authors, commits, filter, onFilterChange }: FilterPanelProps) {
+export function FilterPanel({ authors, commits, filter, commitCount, totalCommits, onFilterChange }: FilterPanelProps) {
   const [fromDate, setFromDate] = useState(filter.startTs ? tsToDateString(filter.startTs) : '');
   const [toDate, setToDate] = useState(filter.endTs ? tsToDateString(filter.endTs) : '');
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>(filter.authorIds ?? []);
   const [pathInput, setPathInput] = useState(filter.paths?.join(', ') ?? '');
   const [selectedHashes, setSelectedHashes] = useState<string[]>(filter.hashes ?? []);
+  const [commitSearch, setCommitSearch] = useState('');
 
   const activeFilterCount = [
     filter.startTs,
@@ -38,6 +41,7 @@ export function FilterPanel({ authors, commits, filter, onFilterChange }: Filter
     setSelectedAuthors(filter.authorIds ?? []);
     setPathInput(filter.paths?.join(', ') ?? '');
     setSelectedHashes(filter.hashes ?? []);
+    setCommitSearch('');
   }, [filter]);
 
   function apply() {
@@ -83,8 +87,20 @@ export function FilterPanel({ authors, commits, filter, onFilterChange }: Filter
         <div className={`reset-filter-bar${isActive ? ' active' : ''}`} aria-label="Reset filters">
           <div>
             <span className="eyebrow">Reset filters</span>
-            <strong>{isActive ? `${activeFilterCount} scope filter${activeFilterCount === 1 ? '' : 's'} active` : 'Full history selected'}</strong>
-            <small>{isActive ? 'Clear the active analysis scope.' : 'Metrics include every analyzed commit.'}</small>
+            <strong>
+              {isActive
+                ? `${activeFilterCount} scope filter${activeFilterCount === 1 ? '' : 's'} active`
+                : 'Full history selected'}
+            </strong>
+            <small>
+              {totalCommits !== undefined
+                ? isActive
+                  ? `${(commitCount ?? 0).toLocaleString()} / ${totalCommits.toLocaleString()} commits in scope`
+                  : `${totalCommits.toLocaleString()} commits`
+                : isActive
+                  ? 'Clear the active analysis scope.'
+                  : 'Metrics include every analyzed commit.'}
+            </small>
           </div>
           <button type="button" className="secondary-button" onClick={reset} disabled={!isActive}>
             Reset
@@ -132,19 +148,34 @@ export function FilterPanel({ authors, commits, filter, onFilterChange }: Filter
         {commits.length > 0 && (
           <div className="filter-section">
             <strong>Select specific commits ({selectedHashes.length} selected)</strong>
+            <input
+              type="search"
+              className="commit-search"
+              placeholder="Search by hash or author…"
+              value={commitSearch}
+              onChange={(e) => setCommitSearch(e.target.value)}
+            />
             <div className="filter-commit-list">
-              {commits.slice(0, 50).map((c) => (
-                <label key={c.hash} className="filter-check filter-check-commit">
-                  <input
-                    type="checkbox"
-                    checked={selectedHashes.includes(c.hash)}
-                    onChange={() => toggleHash(c.hash)}
-                  />
-                  <code>{c.hash.slice(0, 8)}</code>
-                  <span>{c.author.name}</span>
-                  <small>{new Date(c.committerTimestamp * 1000).toLocaleDateString()}</small>
-                </label>
-              ))}
+              {commits
+                .filter(
+                  (c) =>
+                    !commitSearch ||
+                    c.hash.startsWith(commitSearch.toLowerCase()) ||
+                    c.author.name.toLowerCase().includes(commitSearch.toLowerCase()),
+                )
+                .slice(0, 50)
+                .map((c) => (
+                  <label key={c.hash} className="filter-check filter-check-commit">
+                    <input
+                      type="checkbox"
+                      checked={selectedHashes.includes(c.hash)}
+                      onChange={() => toggleHash(c.hash)}
+                    />
+                    <code>{c.hash.slice(0, 8)}</code>
+                    <span>{c.author.name}</span>
+                    <small>{new Date(c.committerTimestamp * 1000).toLocaleDateString()}</small>
+                  </label>
+                ))}
             </div>
           </div>
         )}

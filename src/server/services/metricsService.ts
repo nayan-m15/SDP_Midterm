@@ -14,6 +14,10 @@ import type {
 } from '../../shared/metrics';
 import { directoryAncestors } from '../utils/paths';
 
+function yieldToEventLoop(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 interface MutableAuthorMetric {
   author: AuthorIdentity;
   modifications: number;
@@ -110,6 +114,38 @@ function sortCommitMetrics(values: CommitObjectMetric[]): CommitObjectMetric[] {
   return values.sort((left, right) => left.path.localeCompare(right.path));
 }
 
+export function commitToSummary(commit: HistoryCommit): CommitSummary {
+  const commitFiles = new Map<string, BaseMetric>();
+  const commitDirectories = new Map<string, BaseMetric>();
+  commitDirectories.set('.', zeroBase());
+
+  for (const delta of commit.deltas) {
+    if (delta.binary) continue;
+    const metric = baseFromLines(delta.added, delta.removed);
+    addToCommitMap(commitFiles, delta.path, metric);
+    for (const directory of directoryAncestors(delta.path)) {
+      addToCommitMap(commitDirectories, directory, metric);
+    }
+  }
+
+  const rootMetric = commitDirectories.get('.') ?? zeroBase();
+  return {
+    hash: commit.hash,
+    parents: commit.parents,
+    author: commit.author,
+    committerTimestamp: commit.committerTimestamp,
+    root: commitMetric('.', 'directory', rootMetric),
+    files: sortCommitMetrics(
+      [...commitFiles].map(([path, metric]) => commitMetric(path, 'file', metric)),
+    ),
+    directories: sortCommitMetrics(
+      [...commitDirectories]
+        .filter(([path]) => path !== '.')
+        .map(([path, metric]) => commitMetric(path, 'directory', metric)),
+    ),
+  };
+}
+
 export function calculateMetrics(
   commits: HistoryCommit[],
   repository: RepositoryMetadata,
@@ -155,22 +191,84 @@ export function calculateMetrics(
       );
     }
 
-    const rootMetric = commitDirectories.get('.') ?? zeroBase();
-    summaries.push({
-      hash: commit.hash,
-      parents: commit.parents,
-      author: commit.author,
-      committerTimestamp: commit.committerTimestamp,
-      root: commitMetric('.', 'directory', rootMetric),
-      files: sortCommitMetrics(
-        [...commitFiles].map(([path, metric]) => commitMetric(path, 'file', metric)),
-      ),
-      directories: sortCommitMetrics(
-        [...commitDirectories]
-          .filter(([path]) => path !== '.')
-          .map(([path, metric]) => commitMetric(path, 'directory', metric)),
-      ),
-    });
+    summaries.push(commitToSummary(commit));
+  }
+
+  const commitCount = commits.length;
+  const files = [...fileAggregates.values()]
+    .map((value) => finalizeAggregate(value, commitCount))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const directories = [...directoryAggregates.values()]
+    .map((value) => finalizeAggregate(value, commitCount))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const root = directories.find((directory) => directory.path === '.')!;
+
+  if (root.metrics.growth !== root.metrics.added - root.metrics.removed) {
+    throw new Error('Metric invariant failed: repository growth is inconsistent.');
+  }
+
+  return {
+    repository,
+    commitCount,
+    repositoryMetrics: root.metrics,
+    files,
+    directories,
+    authors: root.authors,
+    commits: summaries.reverse(),
+  };
+}
+
+export async function calculateMetricsAsync(
+  commits: HistoryCommit[],
+  repository: RepositoryMetadata,
+  chunkSize = 1000,
+): Promise<RepositoryAnalysis> {
+  const fileAggregates = new Map<string, MutableAggregate>();
+  const directoryAggregates = new Map<string, MutableAggregate>();
+  ensureAggregate(directoryAggregates, '.', 'directory');
+  const summaries: CommitSummary[] = [];
+
+  for (let i = 0; i < commits.length; i++) {
+    const commit = commits[i];
+    const commitFiles = new Map<string, BaseMetric>();
+    const commitDirectories = new Map<string, BaseMetric>();
+    commitDirectories.set('.', zeroBase());
+
+    for (const delta of commit.deltas) {
+      if (delta.binary) continue;
+      ensureAggregate(fileAggregates, delta.path, 'file');
+      for (const directory of directoryAncestors(delta.path)) {
+        ensureAggregate(directoryAggregates, directory, 'directory');
+      }
+      if (delta.previousPath) {
+        ensureAggregate(fileAggregates, delta.previousPath, 'file');
+        for (const directory of directoryAncestors(delta.previousPath)) {
+          ensureAggregate(directoryAggregates, directory, 'directory');
+        }
+      }
+
+      const metric = baseFromLines(delta.added, delta.removed);
+      addToCommitMap(commitFiles, delta.path, metric);
+      for (const directory of directoryAncestors(delta.path)) {
+        addToCommitMap(commitDirectories, directory, metric);
+      }
+    }
+
+    for (const [path, metric] of commitFiles) {
+      aggregateCommitMetric(ensureAggregate(fileAggregates, path, 'file'), metric, commit.author);
+    }
+    for (const [path, metric] of commitDirectories) {
+      aggregateCommitMetric(
+        ensureAggregate(directoryAggregates, path, 'directory'),
+        metric,
+        commit.author,
+      );
+    }
+
+    summaries.push(commitToSummary(commit));
+
+    // Yield to the event loop after each chunk to keep the server responsive.
+    if (i > 0 && i % chunkSize === 0) await yieldToEventLoop();
   }
 
   const commitCount = commits.length;
