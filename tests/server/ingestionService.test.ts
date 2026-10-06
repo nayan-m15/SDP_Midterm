@@ -92,9 +92,24 @@ describe('repository ingestion', () => {
     await expect(prepareClone('file:///tmp/repository')).rejects.toMatchObject({ code: 'INVALID_URL' });
   });
 
-  it('rejects a ZIP with no .git working tree', async () => {
+  it('initializes a source-code ZIP with no .git as a snapshot repository', async () => {
     const archive = await createNoGitZip();
-    await expect(prepareUpload(archive, 'sample.zip')).rejects.toMatchObject({ code: 'AMBIGUOUS_REPOSITORY' });
+    const prepared = await prepareUpload(archive, 'sample.zip');
+    staged.push(prepared.containerPath);
+
+    const count = execFileSync('git', ['rev-list', '--count', 'HEAD'], {
+      cwd: prepared.repositoryPath,
+      encoding: 'utf8',
+    }).trim();
+    const files = execFileSync('git', ['ls-tree', '--name-only', 'HEAD'], {
+      cwd: prepared.repositoryPath,
+      encoding: 'utf8',
+    });
+
+    expect(prepared.source).toBe('upload');
+    expect(prepared.name).toBe('plain-dir');
+    expect(count).toBe('1');
+    expect(files).toContain('file.txt');
   });
 
   it('rejects a ZIP with two Git working trees', async () => {

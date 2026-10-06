@@ -121,6 +121,42 @@ async function validateRepository(repositoryPath: string): Promise<void> {
   await runGitText(repositoryPath, ['rev-parse', '--verify', 'HEAD^{commit}']);
 }
 
+async function findSourceArchiveRoot(root: string): Promise<string> {
+  const childDirectories: string[] = [];
+  let hasEntry = false;
+  let hasFile = false;
+
+  const directory = await opendir(root);
+  for await (const entry of directory) {
+    hasEntry = true;
+    if (entry.isDirectory()) childDirectories.push(path.join(root, entry.name));
+    else hasFile = true;
+  }
+
+  if (!hasEntry) {
+    throw new AppError(422, 'EMPTY_ARCHIVE', 'The ZIP does not contain files to analyze.');
+  }
+  return !hasFile && childDirectories.length === 1 ? childDirectories[0] : root;
+}
+
+async function initializeSourceSnapshot(repositoryPath: string): Promise<void> {
+  await runGitText(repositoryPath, ['init', '-b', 'main']);
+  const status = (await runGitText(repositoryPath, ['status', '--porcelain'])).trim();
+  if (!status) {
+    throw new AppError(422, 'EMPTY_ARCHIVE', 'The ZIP does not contain files to analyze.');
+  }
+  await runGitText(repositoryPath, ['add', '-A']);
+  await runGitText(repositoryPath, [
+    '-c',
+    'user.name=RAT ZIP Import',
+    '-c',
+    'user.email=rat@example.invalid',
+    'commit',
+    '-m',
+    'Import source ZIP snapshot',
+  ]);
+}
+
 export async function prepareClone(urlValue: string): Promise<PreparedRepository> {
   const url = validateRemoteUrl(urlValue);
   const containerPath = await createStagingDirectory();
@@ -157,16 +193,11 @@ export async function prepareUpload(
   try {
     await extractArchive(archive, extractedPath);
     const repositories = await findRepositoryRoots(extractedPath);
-    if (repositories.length !== 1) {
-      throw new AppError(
-        422,
-        'AMBIGUOUS_REPOSITORY',
-        repositories.length === 0
-          ? 'The ZIP does not contain a Git working tree.'
-          : 'The ZIP contains more than one Git working tree.',
-      );
+    if (repositories.length > 1) {
+      throw new AppError(422, 'AMBIGUOUS_REPOSITORY', 'The ZIP contains more than one Git working tree.');
     }
-    const repositoryPath = repositories[0];
+    const repositoryPath = repositories[0] ?? await findSourceArchiveRoot(extractedPath);
+    if (repositories.length === 0) await initializeSourceSnapshot(repositoryPath);
     const repositoryStats = await stat(repositoryPath);
     if (!repositoryStats.isDirectory()) {
       throw new AppError(422, 'INVALID_REPOSITORY', 'The repository root is invalid.');

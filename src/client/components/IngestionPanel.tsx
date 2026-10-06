@@ -68,7 +68,7 @@ export function IngestionPanel({
 
       <form onSubmit={submit} className="import-form">
         {mode === 'clone' ? (
-          <label className="field field-wide">
+          <label className="field field-wide" key="clone-source">
             <span>Git repository URL</span>
             <input
               type="url"
@@ -80,8 +80,8 @@ export function IngestionPanel({
             />
           </label>
         ) : (
-          <label className="field field-wide file-field">
-            <span>Repository ZIP (must include .git)</span>
+          <label className="field field-wide file-field" key="upload-source">
+            <span>Repository ZIP</span>
             <input
               type="file"
               accept=".zip,application/zip"
@@ -106,7 +106,7 @@ export function IngestionPanel({
         </button>
       </form>
       <p className="helper-text">
-        Full history is analyzed locally. The current repository is replaced after a successful import.
+        Full history is analyzed for Git working-tree ZIPs. Source-code ZIPs are analyzed as a single snapshot commit.
       </p>
     </section>
   );
