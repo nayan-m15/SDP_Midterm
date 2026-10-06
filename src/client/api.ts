@@ -9,6 +9,8 @@ import type {
   RepositoryAnalysis,
   RepositoryListItem,
   RepositoryMetadata,
+  TimeGranularity,
+  TimeSeriesResponse,
 } from '../shared/metrics';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -102,4 +104,19 @@ export function updateAuthorMap(repoId: string, map: Record<string, AuthorIdenti
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ map }),
   });
+}
+
+export function getTimeSeries(
+  repoId: string,
+  filter?: FilterParams,
+  granularity: TimeGranularity | 'auto' = 'auto',
+): Promise<TimeSeriesResponse> {
+  const params = new URLSearchParams();
+  if (filter?.startTs !== undefined) params.set('startTs', String(filter.startTs));
+  if (filter?.endTs !== undefined) params.set('endTs', String(filter.endTs));
+  if (filter?.authorIds?.length) params.set('authorIds', filter.authorIds.join(','));
+  if (filter?.paths?.length) params.set('paths', filter.paths.join(','));
+  if (filter?.hashes?.length) params.set('hashes', filter.hashes.join(','));
+  params.set('granularity', granularity);
+  return request(`/api/repositories/${encodeURIComponent(repoId)}/timeseries?${params.toString()}`);
 }

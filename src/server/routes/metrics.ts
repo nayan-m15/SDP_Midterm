@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { FilterParams } from '../../shared/metrics';
 import { AppError } from '../errors';
 import { applyAuthorMap, extractRawAuthors, mergeAuthorMaps, parseMailmap } from '../services/authorMerge';
-import { calculateMetricsAsync, commitToSummary, filterCommits } from '../services/metricsService';
+import { calculateMetricsAsync, commitToSummary, computeTimeSeries, filterCommits } from '../services/metricsService';
 import type { RepositoryStore } from '../state/repositoryStore';
 
 const paginationFields = {
@@ -33,6 +33,25 @@ const filterSchema = z
 const authorMapSchema = z.object({
   map: z.record(z.object({ id: z.string(), name: z.string(), email: z.string() })),
 });
+
+const timeSeriesSchema = z
+  .object({
+    startTs: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .optional(),
+    endTs: z
+      .string()
+      .regex(/^\d+$/)
+      .transform(Number)
+      .optional(),
+    authorIds: z.string().optional(),
+    paths: z.string().optional(),
+    hashes: z.string().optional(),
+    granularity: z.enum(['auto', 'day', 'week', 'month']).optional(),
+  })
+  .strict();
 
 function parseFilter(data: z.infer<typeof filterSchema>): FilterParams {
   return {
@@ -113,6 +132,24 @@ export function createMetricsRouter(store: RepositoryStore): Router {
         throw new AppError(404, 'COMMIT_NOT_FOUND', 'That commit is not in the analyzed history.');
       }
       response.json(commit);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/:repoId/timeseries', (request, response, next) => {
+    try {
+      const repo = store.getById(request.params.repoId);
+      const parsed = timeSeriesSchema.safeParse(request.query);
+      if (!parsed.success) {
+        throw new AppError(400, 'INVALID_FILTER', 'Invalid filter parameters.');
+      }
+
+      const { granularity, ...filterData } = parsed.data;
+      const filter = parseFilter({ ...filterData });
+      const mergedCommits = applyAuthorMap(repo.commits, repo.authorMap);
+      const filtered = filterCommits(mergedCommits, filter);
+      response.json(computeTimeSeries(filtered, granularity ?? 'auto'));
     } catch (error) {
       next(error);
     }

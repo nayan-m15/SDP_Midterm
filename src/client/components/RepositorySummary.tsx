@@ -1,13 +1,8 @@
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import type { ObjectAggregate, RepositoryAnalysis } from '../../shared/metrics';
+import type { RepositoryAnalysis } from '../../shared/metrics';
+import { FileHotspotsTreemap } from './FileHotspotsTreemap';
 
 const integer = new Intl.NumberFormat('en-US');
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 });
-
-function displayPath(item: ObjectAggregate): string {
-  const parts = item.path.split('/');
-  return parts.at(-1) ?? item.path;
-}
 
 export function RepositorySummary({ analysis }: { analysis: RepositoryAnalysis }) {
   const metrics = analysis.repositoryMetrics;
@@ -19,10 +14,6 @@ export function RepositorySummary({ analysis }: { analysis: RepositoryAnalysis }
     ['Modifications', integer.format(metrics.modifications), 'neutral'],
     ['Change rate', decimal.format(metrics.churnRate), 'neutral'],
   ];
-  const chartData = [...analysis.files]
-    .sort((left, right) => right.metrics.churn - left.metrics.churn)
-    .slice(0, 8)
-    .map((item) => ({ name: displayPath(item), churn: item.metrics.churn, growth: item.metrics.growth }));
 
   return (
     <>
@@ -49,28 +40,7 @@ export function RepositorySummary({ analysis }: { analysis: RepositoryAnalysis }
         ))}
       </section>
 
-      <section className="panel chart-panel">
-        <div className="section-heading">
-          <div>
-            <span className="eyebrow">Hotspots</span>
-            <h2>Highest-churn files</h2>
-          </div>
-          <span className="legend-note">Top {chartData.length} by changed lines</span>
-        </div>
-        {chartData.length ? (
-          <div className="chart-container" aria-label="Highest-churn files chart">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 24 }}>
-                <CartesianGrid strokeDasharray="4 4" vertical={false} stroke="#dce3e2" />
-                <XAxis dataKey="name" angle={-18} textAnchor="end" interval={0} height={52} tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} width={42} />
-                <Tooltip cursor={{ fill: '#f3f7f6' }} />
-                <Bar dataKey="churn" fill="#0d766e" radius={[5, 5, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        ) : <p className="empty-copy">No text-file changes were found.</p>}
-      </section>
+      <FileHotspotsTreemap files={analysis.files} />
     </>
   );
 }

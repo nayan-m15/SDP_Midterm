@@ -134,7 +134,10 @@ main { width: min(1440px, calc(100% - 48px)); margin: 0 auto; }
 .panel { padding: 23px; min-width: 0; }
 .chart-panel { grid-column: 1; }
 .authors-panel { grid-column: 2; }
+.timeline-panel, .trend-panel, .scatter-panel { grid-column: 1 / -1; }
 .chart-container { height: 280px; margin-top: 18px; }
+.chart-container.lg { height: 340px; }
+.chart-container.is-loading { opacity: .55; }
 .legend-note, .count-badge { color: var(--muted); font-size: 11px; }
 .count-badge { padding: 6px 9px; border-radius: 999px; background: #edf0ed; }
 .author-layout { margin-top: 15px; }
@@ -204,6 +207,21 @@ footer { border-top: 1px solid var(--line); padding: 25px max(24px, calc((100vw 
 .hash-copy-btn code { color: var(--green); font-size: 10px; }
 .copied-badge { color: #0a7462; font-size: 10px; font-weight: 700; font-family: 'DM Mono', monospace; }
 
+/* Treemap and scatter plot tooltips */
+.treemap-tooltip, .scatter-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: #172b28;
+  color: white;
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 11px;
+  box-shadow: 0 10px 25px rgba(23, 35, 33, .25);
+}
+.treemap-tooltip strong, .scatter-tooltip strong { font-size: 11px; font-family: 'DM Mono', monospace; margin-bottom: 2px; word-break: break-all; }
+.treemap-tooltip span, .scatter-tooltip span { color: #c9d5d2; }
+
 /* Commit search input */
 .commit-search { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; font: inherit; font-size: 11px; margin-bottom: 6px; outline: none; background: white; }
 .commit-search:focus { border-color: var(--green); box-shadow: 0 0 0 3px rgba(13,118,110,.11); }
@@ -266,7 +284,7 @@ footer { border-top: 1px solid var(--line); padding: 25px max(24px, calc((100vw 
 
 @media (max-width: 900px) {
   .dashboard { grid-template-columns: 1fr; }
-  .chart-panel, .authors-panel { grid-column: 1; }
+  .chart-panel, .authors-panel, .timeline-panel, .trend-panel, .scatter-panel { grid-column: 1; }
   .metric-grid { grid-template-columns: repeat(3, 1fr); }
   .import-form { grid-template-columns: 1fr 130px; }
   .primary-button { grid-column: 1 / -1; }

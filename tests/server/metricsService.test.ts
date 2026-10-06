@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryCommit, RepositoryMetadata } from '../../src/shared/metrics';
-import { calculateMetrics } from '../../src/server/services/metricsService';
+import { calculateMetrics, computeTimeSeries } from '../../src/server/services/metricsService';
 
 const alice = { id: 'Alice <alice@example.com>', name: 'Alice', email: 'alice@example.com' };
 const bob = { id: 'Bob <bob@example.com>', name: 'Bob', email: 'bob@example.com' };
@@ -85,5 +85,53 @@ describe('calculateMetrics', () => {
     const root = result.directories.find((d) => d.path === '.');
     expect(root).toBeDefined();
     expect(root!.metrics).toEqual(result.repositoryMetrics);
+  });
+});
+
+describe('computeTimeSeries', () => {
+  it('returns an empty series for no commits', () => {
+    const result = computeTimeSeries([]);
+    expect(result).toEqual({ granularity: 'day', buckets: [], authors: [] });
+  });
+
+  it('buckets commits by day and attributes churn per author', () => {
+    const first = commit('a');
+    first.committerTimestamp = Date.UTC(2024, 0, 1, 10) / 1000;
+    first.deltas = [{ path: 'src/a.txt', added: 3, removed: 0, binary: false }];
+
+    const second = commit('b', bob);
+    second.committerTimestamp = Date.UTC(2024, 0, 1, 18) / 1000;
+    second.deltas = [{ path: 'src/b.txt', added: 1, removed: 2, binary: false }];
+
+    const third = commit('c');
+    third.committerTimestamp = Date.UTC(2024, 0, 2, 9) / 1000;
+    third.deltas = [{ path: 'src/a.txt', added: 2, removed: 0, binary: false }];
+
+    const result = computeTimeSeries([first, second, third], 'day');
+    expect(result.granularity).toBe('day');
+    expect(result.buckets).toHaveLength(2);
+    expect(result.buckets[0]).toMatchObject({ bucket: '2024-01-01', commits: 2, added: 4, removed: 2, growth: 2, churn: 6 });
+    expect(result.buckets[0].authorChurn[alice.id]).toBe(3);
+    expect(result.buckets[0].authorChurn[bob.id]).toBe(3);
+    expect(result.buckets[1]).toMatchObject({ bucket: '2024-01-02', commits: 1, added: 2, removed: 0, growth: 2, churn: 2 });
+    expect(result.authors).toEqual(expect.arrayContaining([alice, bob]));
+  });
+
+  it('groups authors beyond the limit into an "Other" bucket', () => {
+    const commits: HistoryCommit[] = [];
+    const authors = ['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((letter) => ({
+      id: `${letter} <${letter}@example.com>`, name: letter, email: `${letter}@example.com`,
+    }));
+    for (const [index, author] of authors.entries()) {
+      const c = commit(String(index), author);
+      c.committerTimestamp = Date.UTC(2024, 0, 1) / 1000;
+      c.deltas = [{ path: 'src/a.txt', added: authors.length - index, removed: 0, binary: false }];
+      commits.push(c);
+    }
+
+    const result = computeTimeSeries(commits, 'day', 6);
+    expect(result.authors).toHaveLength(7);
+    expect(result.authors.at(-1)).toMatchObject({ id: '__other__', name: 'Other' });
+    expect(result.buckets[0].authorChurn['__other__']).toBe(1);
   });
 });

@@ -1,8 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import type { CommitSummary, FilterParams, RepositoryAnalysis, RepositoryListItem } from '../shared/metrics';
-import { getAnalysis, getCommitPage, listRepositories } from './api';
+import type {
+  CommitSummary,
+  FilterParams,
+  RepositoryAnalysis,
+  RepositoryListItem,
+  TimeGranularity,
+  TimeSeriesResponse,
+} from '../shared/metrics';
+import { getAnalysis, getCommitPage, getTimeSeries, listRepositories } from './api';
+import { ActivityTimeline } from './components/ActivityTimeline';
 import { AuthorMergePanel } from './components/AuthorMergePanel';
 import { AuthorMetrics } from './components/AuthorMetrics';
+import { AuthorTrendChart } from './components/AuthorTrendChart';
+import { ChurnGrowthScatter } from './components/ChurnGrowthScatter';
 import { CommitDetails } from './components/CommitDetails';
 import { ErrorBanner } from './components/ErrorBanner';
 import { FilterPanel } from './components/FilterPanel';
@@ -15,6 +25,9 @@ export function App() {
   const [repositories, setRepositories] = useState<RepositoryListItem[]>([]);
   const [activeRepoId, setActiveRepoId] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<RepositoryAnalysis | null>(null);
+  const [timeSeries, setTimeSeries] = useState<TimeSeriesResponse | null>(null);
+  const [granularity, setGranularity] = useState<TimeGranularity | 'auto'>('auto');
+  const [timeSeriesLoading, setTimeSeriesLoading] = useState(false);
   const [filter, setFilter] = useState<FilterParams>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -46,12 +59,38 @@ export function App() {
     }
   }
 
+  async function loadTimeSeries(
+    repoId: string,
+    currentFilter: FilterParams = {},
+    currentGranularity: TimeGranularity | 'auto' = granularity,
+  ) {
+    setTimeSeriesLoading(true);
+    try {
+      const result = await getTimeSeries(repoId, currentFilter, currentGranularity);
+      setTimeSeries(result);
+    } catch {
+      // The timeline is a supplementary view — a failure here should not block the rest of the dashboard.
+      setTimeSeries(null);
+    } finally {
+      setTimeSeriesLoading(false);
+    }
+  }
+
+  async function loadDashboard(repoId: string, currentFilter: FilterParams = {}) {
+    await Promise.all([loadAnalysis(repoId, currentFilter), loadTimeSeries(repoId, currentFilter)]);
+  }
+
+  function handleGranularityChange(value: TimeGranularity | 'auto') {
+    setGranularity(value);
+    if (activeRepoId) void loadTimeSeries(activeRepoId, filter, value);
+  }
+
   useEffect(() => {
     void refreshRepos().then((repos) => {
       if (repos.length > 0) {
         const id = repos[0].id;
         setActiveRepoId(id);
-        void loadAnalysis(id, {});
+        void loadDashboard(id, {});
       }
     });
   }, []);
@@ -63,7 +102,8 @@ export function App() {
     setFilter({});
     setCommitPage(0);
     setAnalysis(null);
-    await loadAnalysis(repoId, {});
+    setTimeSeries(null);
+    await loadDashboard(repoId, {});
   }
 
   function handleSelectRepo(id: string) {
@@ -73,7 +113,8 @@ export function App() {
     setFilter({});
     setCommitPage(0);
     setAnalysis(null);
-    void loadAnalysis(id, {});
+    setTimeSeries(null);
+    void loadDashboard(id, {});
   }
 
   async function handleDeleteRepo(id: string) {
@@ -85,10 +126,11 @@ export function App() {
         setActiveRepoId(first.id);
         setFilter({});
         setCommitPage(0);
-        await loadAnalysis(first.id, {});
+        await loadDashboard(first.id, {});
       } else {
         setActiveRepoId(null);
         setAnalysis(null);
+        setTimeSeries(null);
       }
     }
   }
@@ -99,7 +141,7 @@ export function App() {
     if (!activeRepoId) return;
     if (filterDebounce.current) clearTimeout(filterDebounce.current);
     filterDebounce.current = setTimeout(() => {
-      void loadAnalysis(activeRepoId, newFilter);
+      void loadDashboard(activeRepoId, newFilter);
     }, 400);
   }
 
@@ -186,7 +228,7 @@ export function App() {
                 />
                 <AuthorMergePanel
                   repoId={activeRepoId}
-                  onMerged={async () => { await loadAnalysis(activeRepoId, filter); }}
+                  onMerged={async () => { await loadDashboard(activeRepoId, filter); }}
                   onError={setError}
                 />
               </>
@@ -206,6 +248,14 @@ export function App() {
               <div className={`dashboard${analysisLoading ? ' loading' : ''}`}>
                 <RepositorySummary analysis={analysis} />
                 <AuthorMetrics authors={analysis.authors} />
+                <ActivityTimeline
+                  data={timeSeries}
+                  granularity={granularity}
+                  loading={timeSeriesLoading}
+                  onGranularityChange={handleGranularityChange}
+                />
+                <AuthorTrendChart data={timeSeries} />
+                <ChurnGrowthScatter files={analysis.files} />
                 <div className="table-tabs" role="tablist" aria-label="Metric object type">
                   <button
                     className={tableView === 'files' ? 'active' : ''}

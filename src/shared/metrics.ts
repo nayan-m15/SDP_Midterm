@@ -117,3 +117,22 @@ export interface ApiErrorResponse {
     message: string;
   };
 }
+
+export type TimeGranularity = 'day' | 'week' | 'month';
+
+export interface TimeBucket {
+  bucket: string;
+  timestamp: number;
+  commits: number;
+  added: number;
+  removed: number;
+  growth: number;
+  churn: number;
+  authorChurn: Record<string, number>;
+}
+
+export interface TimeSeriesResponse {
+  granularity: TimeGranularity;
+  buckets: TimeBucket[];
+  authors: AuthorIdentity[];
+}

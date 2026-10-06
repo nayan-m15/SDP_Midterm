@@ -165,6 +165,51 @@ describe('API', () => {
     }
   });
 
+  it('returns a bucketed time series for commit activity', async () => {
+    const fixture = await createGitFixture();
+    const store = new RepositoryStore();
+    try {
+      const archive = await zipDirectory(fixture.repositoryPath);
+      const app = createApp(store);
+
+      const importResponse = await request(app)
+        .post('/api/repositories/upload')
+        .attach('repository', archive, { filename: 'sample.zip', contentType: 'application/zip' })
+        .expect(201);
+      const { id } = importResponse.body as { id: string };
+
+      const response = await request(app)
+        .get(`/api/repositories/${id}/timeseries`)
+        .expect(200);
+      expect(['day', 'week', 'month']).toContain(response.body.granularity);
+      expect(Array.isArray(response.body.buckets)).toBe(true);
+      expect(Array.isArray(response.body.authors)).toBe(true);
+      const totalCommits = (response.body.buckets as Array<{ commits: number }>)
+        .reduce((sum, bucket) => sum + bucket.commits, 0);
+      expect(totalCommits).toBe(5);
+    } finally {
+      await store.clear();
+      await fixture.cleanup();
+    }
+  });
+
+  it('rejects invalid granularity values for the time series endpoint', async () => {
+    const store = new RepositoryStore();
+    store.add({
+      containerPath: '',
+      repositoryPath: '',
+      analysis: makeAnalysis(),
+      commits: [],
+      authorMap: {},
+    });
+    const app = createApp(store);
+
+    const response = await request(app)
+      .get(`/api/repositories/${TEST_REPO_ID}/timeseries?granularity=yearly`)
+      .expect(400);
+    expect(response.body.error.code).toBe('INVALID_FILTER');
+  });
+
   it('does not expose git stderr or host paths in error responses', async () => {
     const app = createApp();
     const response = await request(app)
