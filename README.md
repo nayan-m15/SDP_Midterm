@@ -20,14 +20,28 @@ This submission targets the cumulative **50% requirements tier**. Date/manual co
 - npm
 - Git CLI
 
-## Run locally
+## Clone and run locally
 
-```bash
-npm install
-npm run dev
-```
+1. Clone the repository and move into its directory:
 
-Open `http://localhost:5173`. Vite proxies API calls to the Express server on port `3001`.
+   ```bash
+   git clone https://github.com/nayan-m15/SDP_Midterm.git
+   cd SDP_Midterm
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Start the development server (client and server run concurrently):
+
+   ```bash
+   npm run dev
+   ```
+
+   Open `http://localhost:5173`. Vite proxies API calls to the Express server on port `3001`.
 
 For a production build:
 
@@ -36,7 +50,7 @@ npm run build
 npm start
 ```
 
-The Express server serves the built client from `dist/client`.
+The Express server serves the built client from `dist/client`. The listening port defaults to `3001` and can be overridden with the `PORT` environment variable (e.g. `PORT=3101 npm start`).
 
 ## Verification
 
