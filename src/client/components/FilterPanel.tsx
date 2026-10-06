@@ -17,20 +17,20 @@ function dateStringToTs(value: string): number {
 }
 
 export function FilterPanel({ authors, commits, filter, onFilterChange }: FilterPanelProps) {
-  const [open, setOpen] = useState(false);
   const [fromDate, setFromDate] = useState(filter.startTs ? tsToDateString(filter.startTs) : '');
   const [toDate, setToDate] = useState(filter.endTs ? tsToDateString(filter.endTs) : '');
   const [selectedAuthors, setSelectedAuthors] = useState<string[]>(filter.authorIds ?? []);
   const [pathInput, setPathInput] = useState(filter.paths?.join(', ') ?? '');
   const [selectedHashes, setSelectedHashes] = useState<string[]>(filter.hashes ?? []);
 
-  const isActive = !!(
-    filter.startTs ||
-    filter.endTs ||
-    filter.authorIds?.length ||
-    filter.paths?.length ||
-    filter.hashes?.length
-  );
+  const activeFilterCount = [
+    filter.startTs,
+    filter.endTs,
+    filter.authorIds?.length,
+    filter.paths?.length,
+    filter.hashes?.length,
+  ].filter(Boolean).length;
+  const isActive = activeFilterCount > 0;
 
   useEffect(() => {
     setFromDate(filter.startTs ? tsToDateString(filter.startTs) : '');
@@ -77,83 +77,84 @@ export function FilterPanel({ authors, commits, filter, onFilterChange }: Filter
             {isActive && <span className="filter-active-badge">Active</span>}
           </h2>
         </div>
-        <button type="button" className="toggle-button" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-          {open ? 'Collapse ▲' : 'Expand ▼'}
-        </button>
       </div>
 
-      {open && (
-        <div className="filter-body">
-          <div className="filter-row">
-            <div className="field">
-              <span>From date (inclusive)</span>
-              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
-            </div>
-            <div className="field">
-              <span>To date (exclusive)</span>
-              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
-            </div>
-            <div className="field filter-path-field">
-              <span>File or directory path (comma-separated)</span>
-              <input
-                type="text"
-                placeholder="e.g. src/main.c, lib/"
-                value={pathInput}
-                onChange={(e) => setPathInput(e.target.value)}
-              />
-            </div>
+      <div className="filter-body">
+        <div className={`reset-filter-bar${isActive ? ' active' : ''}`} aria-label="Reset filters">
+          <div>
+            <span className="eyebrow">Reset filters</span>
+            <strong>{isActive ? `${activeFilterCount} scope filter${activeFilterCount === 1 ? '' : 's'} active` : 'Full history selected'}</strong>
+            <small>{isActive ? 'Clear the active analysis scope.' : 'Metrics include every analyzed commit.'}</small>
           </div>
+          <button type="button" className="secondary-button" onClick={reset} disabled={!isActive}>
+            Reset
+          </button>
+        </div>
 
-          {authors.length > 0 && (
-            <div className="filter-section">
-              <strong>Filter by author</strong>
-              <div className="filter-checkboxes">
-                {authors.map((a) => (
-                  <label key={a.author.id} className="filter-check">
-                    <input
-                      type="checkbox"
-                      checked={selectedAuthors.includes(a.author.id)}
-                      onChange={() => toggleAuthor(a.author.id)}
-                    />
-                    {a.author.name}
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {commits.length > 0 && (
-            <div className="filter-section">
-              <strong>Select specific commits ({selectedHashes.length} selected)</strong>
-              <div className="filter-commit-list">
-                {commits.slice(0, 50).map((c) => (
-                  <label key={c.hash} className="filter-check filter-check-commit">
-                    <input
-                      type="checkbox"
-                      checked={selectedHashes.includes(c.hash)}
-                      onChange={() => toggleHash(c.hash)}
-                    />
-                    <code>{c.hash.slice(0, 8)}</code>
-                    <span>{c.author.name}</span>
-                    <small>{new Date(c.committerTimestamp * 1000).toLocaleDateString()}</small>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="filter-actions">
-            <button type="button" className="primary-button" onClick={apply}>
-              Apply filter
-            </button>
-            {isActive && (
-              <button type="button" className="secondary-button" onClick={reset}>
-                Clear filter
-              </button>
-            )}
+        <div className="filter-row">
+          <div className="field">
+            <span>From date (inclusive)</span>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </div>
+          <div className="field">
+            <span>To date (exclusive)</span>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </div>
+          <div className="field filter-path-field">
+            <span>File or directory path (comma-separated)</span>
+            <input
+              type="text"
+              placeholder="e.g. src/main.c, lib/"
+              value={pathInput}
+              onChange={(e) => setPathInput(e.target.value)}
+            />
           </div>
         </div>
-      )}
+
+        {authors.length > 0 && (
+          <div className="filter-section">
+            <strong>Filter by author</strong>
+            <div className="filter-checkboxes">
+              {authors.map((a) => (
+                <label key={a.author.id} className="filter-check">
+                  <input
+                    type="checkbox"
+                    checked={selectedAuthors.includes(a.author.id)}
+                    onChange={() => toggleAuthor(a.author.id)}
+                  />
+                  {a.author.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {commits.length > 0 && (
+          <div className="filter-section">
+            <strong>Select specific commits ({selectedHashes.length} selected)</strong>
+            <div className="filter-commit-list">
+              {commits.slice(0, 50).map((c) => (
+                <label key={c.hash} className="filter-check filter-check-commit">
+                  <input
+                    type="checkbox"
+                    checked={selectedHashes.includes(c.hash)}
+                    onChange={() => toggleHash(c.hash)}
+                  />
+                  <code>{c.hash.slice(0, 8)}</code>
+                  <span>{c.author.name}</span>
+                  <small>{new Date(c.committerTimestamp * 1000).toLocaleDateString()}</small>
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="filter-actions">
+          <button type="button" className="primary-button" onClick={apply}>
+            Apply filter
+          </button>
+        </div>
+      </div>
     </section>
   );
 }

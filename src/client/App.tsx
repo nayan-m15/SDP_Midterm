@@ -94,19 +94,7 @@ export function App() {
     }, 400);
   }
 
-  function resetFilters() {
-    handleFilterChange({});
-  }
-
   const repoCount = repositories.length;
-  const activeFilterCount = [
-    filter.startTs,
-    filter.endTs,
-    filter.authorIds?.length,
-    filter.paths?.length,
-    filter.hashes?.length,
-  ].filter(Boolean).length;
-  const hasActiveFilter = activeFilterCount > 0;
 
   return (
     <div className="app-shell">
@@ -160,16 +148,6 @@ export function App() {
               </section>
             )}
 
-            <section className={`panel reset-filter-bar${hasActiveFilter ? ' active' : ''}`} aria-label="Reset filters">
-              <div>
-                <span className="eyebrow">Reset filters</span>
-                <strong>{hasActiveFilter ? `${activeFilterCount} scope filter${activeFilterCount === 1 ? '' : 's'} active` : 'Full history selected'}</strong>
-                <small>{hasActiveFilter ? 'Clear the active analysis scope.' : 'Metrics include every analyzed commit.'}</small>
-              </div>
-              <button type="button" className="secondary-button" onClick={resetFilters} disabled={!hasActiveFilter || !activeRepoId}>
-                Reset
-              </button>
-            </section>
 
             {analysis && activeRepoId ? (
               <>
